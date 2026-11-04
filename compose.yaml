@@ -1,6 +1,8 @@
 services:
   persona:
     build: .
+    environment:
+      PERSONA_SECURE_COOKIE: "${PERSONA_SECURE_COOKIE:-false}"
     ports:
       - "127.0.0.1:5000:5000"
     volumes:

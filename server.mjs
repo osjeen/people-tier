@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {createAuth} from './auth.mjs';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -8,11 +9,18 @@ const directory=resolve(root,process.env.PERSONA_DATA_DIR||'data');
 const file=resolve(directory,'tierlist.json');
 const dist=resolve(root,'dist');
 let queue=Promise.resolve();
+const auth=createAuth(directory);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png'};
 const server=http.createServer(async(req,res)=>{
  const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  try{
   const url=new URL(req.url,'http://localhost');
+  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');
+  if(url.pathname==='/healthz'&&req.method==='GET'){send(200,{ok:true});return}
+  if(url.pathname==='/auth-client.js'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'});res.end(await readFile(resolve(root,'auth-client.js')));return}
+  if(await auth.handle(req,res,url))return;
+  if(!(await auth.allowed(req))){if(url.pathname.startsWith('/api/')||!['GET','HEAD'].includes(req.method)){send(401,{error:'로그인이 필요합니다.'});return}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(await readFile(resolve(root,'login.html')));return}
+
   if(url.pathname==='/api/data'){
    if(req.method==='GET'){
     await queue;
@@ -30,7 +38,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD'){send(405,{error:'지원하지 않는 요청입니다.'});return}
   const target=resolve(dist,'.'+decodeURIComponent(url.pathname==='/'?'/index.html':url.pathname));
   if(!target.startsWith(dist+'/')){send(403,{error:'접근할 수 없습니다.'});return}
-  try{const body=await readFile(target);res.writeHead(200,{'Content-Type':mime[extname(target)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:body)}catch(e){send(404,{error:'파일을 찾을 수 없습니다. npm run build를 실행해 주세요.'})}
+  try{const body=await readFile(target);res.writeHead(200,{'Content-Type':mime[extname(target)]||'application/octet-stream','Cache-Control':'no-store'});res.end(req.method==='HEAD'?undefined:body)}catch(e){send(404,{error:'파일을 찾을 수 없습니다. npm run build를 실행해 주세요.'})}
  }catch(e){send(500,{error:'저장 처리에 실패했습니다. 다시 시도해 주세요.'})}
 });
 server.listen(Number(process.env.PERSONA_PORT||5000),process.env.PERSONA_HOST||'127.0.0.1',()=>console.log('PERSONA: http://127.0.0.1:'+server.address().port));

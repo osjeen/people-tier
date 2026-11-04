@@ -61,3 +61,19 @@ npm start
 
 
 티어는 1~20개까지 추가·삭제할 수 있습니다. 보드 위의 티어 추가 버튼, 티어 이름 클릭으로 이름 수정·삭제, ↑/↓ 버튼으로 순서 변경을 지원합니다. 삭제한 티어의 인물은 미배치로 이동합니다. JSON의 `tierOrder`는 티어 ID 순서, `tierNames`는 이름입니다. 기존 JSON은 기본 S/A/B/C/D 순서로 불러옵니다.
+
+## 비밀번호 접근 제한
+
+최신 소스를 옮긴 뒤 `docker compose up -d --build`로 업데이트합니다. 최초 설정 및 비밀번호 변경은 서버 터미널에서 실행합니다(입력은 표시되지 않습니다).
+
+```sh
+docker compose exec persona node scripts/set-password.mjs
+```
+
+로컬 Node 실행은 `node scripts/set-password.mjs`입니다. 12자 이상, UTF-8 128바이트 이하의 비밀번호를 설정하세요. 비밀번호 미설정 시 데이터에 접근할 수 없습니다. `data/auth.json`에는 salt와 scrypt 해시만 저장됩니다. 데이터와 함께 백업하고 외부에 공개하지 마세요.
+
+비밀번호 전송은 RSA-OAEP(SHA-256, 3072비트)와 1분 유효한 일회용 challenge를 사용합니다. 서버 개인키는 메모리에만 존재하며 재시작 시 교체됩니다. 이는 JSON 파일 자체의 암호화가 아닙니다. 외부 접속은 HTTPS를 사용해야 공개키와 페이지를 변조하는 공격도 방어할 수 있습니다.
+
+로그인은 HttpOnly/SameSite=Strict 쿠키로 8시간 유지됩니다. 서버 재시작 또는 비밀번호 변경 시 기존 세션은 무효화됩니다. 1분 동안 서버 전체 로그인 시도를 10회로 제한합니다. HTTPS 도메인 전용으로 운영할 때 `.env`에 `PERSONA_SECURE_COOKIE=true`를 설정한 뒤 `docker compose up -d`를 실행하면 Secure 쿠키를 사용합니다.
+
+인증 검증: `node scripts/check-auth.mjs`. 기존 익명 데이터 API 검증 스크립트 대신 이 검증을 사용하세요.
